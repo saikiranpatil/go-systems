@@ -14,6 +14,10 @@ type chunkReader struct {
 	pos             int
 }
 
+func (cr *chunkReader) Close() error {
+	return nil
+}
+
 // Read reads up to len(p) or numBytesPerRead bytes from the string per call
 // its useful for simulating reading a variable number of bytes per chunk from a network connection
 func (cr *chunkReader) Read(p []byte) (n int, err error) {
