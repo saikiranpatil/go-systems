@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"mytcpserver/internal/headers"
@@ -21,12 +22,14 @@ const (
 	StateInit           parserState = "init"
 	StateDone           parserState = "done"
 	StateParsingHeaders parserState = "parsingHeaders"
+	StateParsingBody    parserState = "parsingBody"
 )
 
 type Request struct {
 	RequestLine RequestLine
 	state       parserState
 	Headers     headers.Headers
+	Body        []byte
 }
 
 // constants
@@ -36,6 +39,7 @@ var crlf = "\r\n"
 var ErrorBadStartLine = fmt.Errorf("bad start line")
 var ErrorMalformedRequestLine = fmt.Errorf("malformed request line")
 var ErrorUnsupportedHttpVersion = fmt.Errorf("unsupported http version")
+var ErrorInvalidContentLength = fmt.Errorf("invalid content length")
 
 func getInitialRequest() *Request {
 	return &Request{
@@ -112,7 +116,47 @@ outer:
 
 			read += n
 			if done {
+				r.state = StateParsingBody
+			}
+
+		case StateParsingBody:
+			contentLengthStr, found := r.Headers.Get("Content-Length")
+			// content-length not found,
+			// meaning no body present
+			// hance continue
+			if !found {
 				r.state = StateDone
+				continue
+			}
+
+			contentLength, err := strconv.Atoi(contentLengthStr)
+			if err != nil {
+				return 0, err
+			}
+
+			if len(r.Body) == contentLength {
+				r.state = StateDone
+				continue
+			}
+
+			neededBytes := contentLength - len(r.Body)
+			if neededBytes < 0 {
+				return 0, ErrorInvalidContentLength
+			}
+
+			availableBytes := len(data) - read
+			if availableBytes == 0 {
+				break outer
+			}
+
+			availableBytes = min(availableBytes, neededBytes)
+			r.Body = append(r.Body, data[read:read+availableBytes]...)
+			read += availableBytes
+
+			if len(r.Body) == contentLength {
+				r.state = StateDone
+			} else {
+				break outer // Need more data from the network
 			}
 
 		case StateDone:
@@ -144,6 +188,10 @@ func (r *Request) PrintRequestLine() {
 	for key, value := range r.Headers {
 		fmt.Printf("- %s: %s\n", key, value)
 	}
+
+	// request body
+	fmt.Println("Body:")
+	fmt.Println(string(r.Body))
 }
 
 func RequestFromReader(reader io.ReadCloser) (*Request, error) {

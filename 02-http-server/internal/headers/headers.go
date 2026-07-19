@@ -65,6 +65,11 @@ func processKey(key string) (string, error) {
 	return strings.ToLower(key), nil
 }
 
+func (h Headers) Get(key string) (string, bool) {
+	value, found := h[strings.ToLower(key)]
+	return value, found
+}
+
 func (h Headers) Parse(data []byte) (int, bool, error) {
 	endIdx := bytes.Index(data, []byte(crlf))
 	if endIdx == -1 {
