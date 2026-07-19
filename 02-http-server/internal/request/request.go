@@ -109,7 +109,25 @@ outer:
 	return read, nil
 }
 
-func RequestFromReader(reader io.Reader) (*Request, error) {
+func (r *Request) PrintRequestLine() {
+	requestLine := r.RequestLine
+	if requestLine.Method == "" {
+		return
+	}
+
+	fmt.Printf(
+		"Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n",
+		requestLine.Method,
+		requestLine.RequestTarget,
+		requestLine.HttpVersion,
+	)
+}
+
+func RequestFromReader(reader io.ReadCloser) (*Request, error) {
+	defer func() {
+		reader.Close()
+		fmt.Printf("client closed!\n")
+	}()
 	r := getInitialRequest()
 
 	buf := make([]byte, 1024)
