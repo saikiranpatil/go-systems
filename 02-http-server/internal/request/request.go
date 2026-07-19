@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"mytcpserver/internal/headers"
 )
 
 type RequestLine struct {
@@ -16,14 +18,15 @@ type RequestLine struct {
 type parserState string
 
 const (
-	StateInit  parserState = "init"
-	StateDone  parserState = "done"
-	StateError parserState = "error"
+	StateInit           parserState = "init"
+	StateDone           parserState = "done"
+	StateParsingHeaders parserState = "parsingHeaders"
 )
 
 type Request struct {
 	RequestLine RequestLine
 	state       parserState
+	Headers     headers.Headers
 }
 
 // constants
@@ -36,7 +39,8 @@ var ErrorUnsupportedHttpVersion = fmt.Errorf("unsupported http version")
 
 func getInitialRequest() *Request {
 	return &Request{
-		state: StateInit,
+		state:   StateInit,
+		Headers: headers.NewHeaders(),
 	}
 }
 
@@ -67,8 +71,8 @@ func parseRequestLine(b []byte) (*RequestLine, int, error) {
 	return rl, read, nil
 }
 
-func (r *Request) shouldParseRequestLine() bool {
-	return r.state == StateDone || r.state == StateInit
+func parseFeildLine(b []byte) {
+
 }
 
 func (r *Request) parse(data []byte) (int, error) {
@@ -77,9 +81,6 @@ func (r *Request) parse(data []byte) (int, error) {
 outer:
 	for {
 		switch r.state {
-		case StateError:
-			return 0, ErrorMalformedRequestLine
-
 		case StateInit:
 			rl, n, err := parseRequestLine(data[read:])
 			if err != nil {
@@ -88,7 +89,6 @@ outer:
 					break outer
 				}
 
-				r.state = StateError
 				return 0, err
 			}
 
@@ -98,7 +98,23 @@ outer:
 
 			r.RequestLine = *rl
 			read += n
-			r.state = StateDone
+			r.state = StateParsingHeaders
+
+		case StateParsingHeaders:
+			n, done, err := r.Headers.Parse(data[read:])
+			if err != nil {
+				return 0, err
+			}
+
+			if n == 0 {
+				break outer // need more data from the network before we can continue
+			}
+
+			read += n
+			if done {
+				r.state = StateDone
+			}
+
 		case StateDone:
 			break outer
 		default:
@@ -115,12 +131,19 @@ func (r *Request) PrintRequestLine() {
 		return
 	}
 
+	// print request line
 	fmt.Printf(
 		"Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n",
 		requestLine.Method,
 		requestLine.RequestTarget,
 		requestLine.HttpVersion,
 	)
+
+	// print field line
+	fmt.Println("Headers:")
+	for key, value := range r.Headers {
+		fmt.Printf("- %s: %s\n", key, value)
+	}
 }
 
 func RequestFromReader(reader io.ReadCloser) (*Request, error) {
@@ -133,7 +156,7 @@ func RequestFromReader(reader io.ReadCloser) (*Request, error) {
 	buf := make([]byte, 1024)
 	bufLen := 0
 
-	for r.shouldParseRequestLine() {
+	for r.state != StateDone {
 		if bufLen == len(buf) {
 			newBuf := make([]byte, len(buf)*2)
 			copy(newBuf, buf)
