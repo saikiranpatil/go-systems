@@ -194,11 +194,7 @@ func (r *Request) PrintRequestLine() {
 	fmt.Println(string(r.Body))
 }
 
-func RequestFromReader(reader io.ReadCloser) (*Request, error) {
-	defer func() {
-		reader.Close()
-		fmt.Printf("client closed!\n")
-	}()
+func RequestFromReader(reader io.Reader) (*Request, error) {
 	r := getInitialRequest()
 
 	buf := make([]byte, 1024)
