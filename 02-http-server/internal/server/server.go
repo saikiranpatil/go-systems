@@ -1,23 +1,34 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 
 	"mytcpserver/internal/request"
+	"mytcpserver/internal/response"
 )
+
+type HandlerError struct {
+	StatusCode response.StatusCode
+	Message    string
+}
+
+type Handler func(w io.Writer, req *request.Request) *HandlerError
 
 type Server struct {
 	listener net.Listener
 	wg       sync.WaitGroup
 	ctx      context.Context
 	cancel   context.CancelFunc
+	handler  Handler
 }
 
-func Serve(port int) (*Server, error) {
+func Serve(port int, handler Handler) (*Server, error) {
 	address := fmt.Sprintf(":%d", port)
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
@@ -30,6 +41,7 @@ func Serve(port int) (*Server, error) {
 		listener: listener,
 		ctx:      ctx,
 		cancel:   cancel,
+		handler:  handler,
 	}
 
 	go srv.listenLoop()
@@ -53,34 +65,45 @@ func (s *Server) listenLoop() {
 	}
 }
 
-func sendResponse(conn net.Conn) error {
-	body := "Hello World!, this is sample message"
-	contentLength := len(body)
+func sendResponse(conn net.Conn, body string, statusCode response.StatusCode) error {
+	contentLength := len(body) + len("\r\n")
 
-	_, err := fmt.Fprintf(conn,
-		"HTTP/1.1 200 OK\r\n"+
-			"Content-Type: text/plain\r\n"+
-			"Content-Length: %d\r\n"+
-			"\r\n"+
-			"%s",
-		contentLength, body,
-	)
+	writer := io.Writer(conn)
 
+	err := response.WriteStatusLine(writer, statusCode)
+	if err != nil {
+		return nil
+	}
+
+	headers := response.GetDefaultHeaders(contentLength)
+	err = response.WriteHeaders(writer, headers)
+	if err != nil {
+		return err
+	}
+
+	err = response.WriteMessageBody(writer, body)
 	return err
 }
+
 func (s *Server) handleConnection(conn net.Conn) {
 	defer s.wg.Done()
 	defer conn.Close()
 
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		fmt.Printf("Error parsing request: %v\n", err)
+		sendResponse(conn, err.Error(), response.StatBadRequest)
 		return
 	}
 	req.PrintRequestLine()
-	if err := sendResponse(conn); err != nil {
-		fmt.Printf("Error sending response: %v\n", err)
+
+	body := bytes.NewBuffer([]byte{})
+	handleError := s.handler(body, req)
+	if handleError != nil {
+		sendResponse(conn, handleError.Message, handleError.StatusCode)
+		return
 	}
+
+	sendResponse(conn, body.String(), response.StatusOK)
 }
 
 func (s *Server) Close() error {

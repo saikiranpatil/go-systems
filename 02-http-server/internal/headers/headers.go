@@ -70,6 +70,18 @@ func (h Headers) Get(key string) (string, bool) {
 	return value, found
 }
 
+// append to headers map seperated by comma (,)
+// else add the value
+func (h Headers) Set(key string, value string) {
+	_, keyPresent := h[key]
+
+	if keyPresent {
+		h[key] = h[key] + "," + value
+	} else {
+		h[key] = value
+	}
+}
+
 func (h Headers) Parse(data []byte) (int, bool, error) {
 	endIdx := bytes.Index(data, []byte(crlf))
 	if endIdx == -1 {
@@ -95,15 +107,7 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 	key = processedKey
 	value = strings.TrimSpace(value)
 
-	// append to headers map seperated by comma (,)
-	// else add the value
-	_, keyPresent := h[key]
-
-	if keyPresent {
-		h[key] = h[key] + "," + value
-	} else {
-		h[key] = value
-	}
+	h.Set(key, value)
 
 	return endIdx + len(crlf), false, nil
 }
