@@ -115,7 +115,7 @@ func (r *Response) WriteHeaders() error {
 	return nil
 }
 
-func (r *Response) WriteMessageBody(body string) error {
+func (r *Response) WriteMessageBody(body []byte) error {
 	if r.state == stateDone {
 		return ErrBodyAlreadySent
 	}
@@ -127,7 +127,7 @@ func (r *Response) WriteMessageBody(body string) error {
 		}
 	}
 
-	r.Body = []byte(body)
+	r.Body = body
 	_, err := r.writer.Write(r.Body)
 	if err != nil {
 		return err

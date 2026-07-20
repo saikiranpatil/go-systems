@@ -78,7 +78,7 @@ func sendResponse(conn net.Conn, body string, statusCode response.StatusCode) er
 		return err
 	}
 
-	err = response.WriteMessageBody(body)
+	err = response.WriteMessageBody([]byte(body))
 	return err
 }
 func (s *Server) handleConnection(conn net.Conn) {
@@ -89,7 +89,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 	res := response.NewResponse(conn)
 	if err != nil {
 		res.WriteStatusLine(response.StatBadRequest)
-		res.WriteMessageBody(err.Error())
+		res.WriteMessageBody([]byte(err.Error()))
 		return
 	}
 	req.PrintRequestLine()
@@ -97,7 +97,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 	handleError := s.handler(res, req)
 	if handleError != nil {
 		res.WriteStatusLine(handleError.StatusCode)
-		res.WriteMessageBody(handleError.Message)
+		res.WriteMessageBody([]byte(handleError.Message))
 		return
 	}
 }

@@ -61,10 +61,24 @@ func main() {
 				Message:    HTML500,
 			}
 
+		case "/video":
+			res.Headers.Replace("Content-Type", "video/mp4")
+
+			b, _ := os.ReadFile("./assets/videoplayback.mp4")
+			res.WriteMessageBody(b)
+			return nil
+
+		case "/image":
+			res.Headers.Replace("Content-Type", "image/png")
+
+			b, _ := os.ReadFile("./assets/avatar.png")
+			res.WriteMessageBody(b)
+			return nil
+
 		default:
 			res.SetHeader("X-Sample-Header-Value", "Sample Value")
 			res.WriteStatusLine(response.StatusOK)
-			res.WriteMessageBody(HTML200)
+			res.WriteMessageBody([]byte(HTML200))
 			return nil
 		}
 	}
