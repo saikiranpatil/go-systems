@@ -1,11 +1,9 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"sync"
 
@@ -18,7 +16,7 @@ type HandlerError struct {
 	Message    string
 }
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(res *response.Response, req *request.Request) *HandlerError
 
 type Server struct {
 	listener net.Listener
@@ -66,44 +64,42 @@ func (s *Server) listenLoop() {
 }
 
 func sendResponse(conn net.Conn, body string, statusCode response.StatusCode) error {
-	contentLength := len(body) + len("\r\n")
+	response := response.NewResponse(conn)
 
-	writer := io.Writer(conn)
-
-	err := response.WriteStatusLine(writer, statusCode)
+	err := response.WriteStatusLine(statusCode)
 	if err != nil {
 		return nil
 	}
 
-	headers := response.GetDefaultHeaders(contentLength)
-	err = response.WriteHeaders(writer, headers)
+	headers := response.Headers
+	headers.Replace("Content-Type", "text/plain")
+	err = response.WriteHeaders()
 	if err != nil {
 		return err
 	}
 
-	err = response.WriteMessageBody(writer, body)
+	err = response.WriteMessageBody(body)
 	return err
 }
-
 func (s *Server) handleConnection(conn net.Conn) {
 	defer s.wg.Done()
 	defer conn.Close()
 
 	req, err := request.RequestFromReader(conn)
+	res := response.NewResponse(conn)
 	if err != nil {
-		sendResponse(conn, err.Error(), response.StatBadRequest)
+		res.WriteStatusLine(response.StatBadRequest)
+		res.WriteMessageBody(err.Error())
 		return
 	}
 	req.PrintRequestLine()
 
-	body := bytes.NewBuffer([]byte{})
-	handleError := s.handler(body, req)
+	handleError := s.handler(res, req)
 	if handleError != nil {
-		sendResponse(conn, handleError.Message, handleError.StatusCode)
+		res.WriteStatusLine(handleError.StatusCode)
+		res.WriteMessageBody(handleError.Message)
 		return
 	}
-
-	sendResponse(conn, body.String(), response.StatusOK)
 }
 
 func (s *Server) Close() error {

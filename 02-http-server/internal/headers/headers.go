@@ -70,6 +70,10 @@ func (h Headers) Get(key string) (string, bool) {
 	return value, found
 }
 
+func (h Headers) Replace(key string, value string) {
+	h[key] = value
+}
+
 // append to headers map seperated by comma (,)
 // else add the value
 func (h Headers) Set(key string, value string) {

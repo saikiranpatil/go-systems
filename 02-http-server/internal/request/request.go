@@ -2,6 +2,7 @@ package request
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -36,10 +37,10 @@ type Request struct {
 var crlf = "\r\n"
 
 // errors
-var ErrorBadStartLine = fmt.Errorf("bad start line")
-var ErrorMalformedRequestLine = fmt.Errorf("malformed request line")
-var ErrorUnsupportedHttpVersion = fmt.Errorf("unsupported http version")
-var ErrorInvalidContentLength = fmt.Errorf("invalid content length")
+var ErrorBadStartLine = errors.New("bad start line")
+var ErrorMalformedRequestLine = errors.New("malformed request line")
+var ErrorUnsupportedHttpVersion = errors.New("unsupported http version")
+var ErrorInvalidContentLength = errors.New("invalid content length")
 
 func getInitialRequest() *Request {
 	return &Request{

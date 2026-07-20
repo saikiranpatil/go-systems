@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"log"
 	"mytcpserver/internal/request"
 	"mytcpserver/internal/response"
@@ -13,32 +12,71 @@ import (
 
 const port = 4000
 
+const (
+	HTML400 string = `<html>
+  <head>
+    <title>400 Bad Request</title>
+  </head>
+  <body>
+    <h1>Bad Request</h1>
+    <p>Your request honestly kinda sucked.</p>
+  </body>
+</html>`
+
+	HTML500 string = `<html>
+  <head>
+    <title>500 Internal Server Error</title>
+  </head>
+  <body>
+    <h1>Server Error</h1>
+    <p>Something went wrong on our end.</p>
+  </body>
+</html>`
+
+	HTML200 string = `<html>
+  <head>
+    <title>200 OK</title>
+  </head>
+  <body>
+    <h1>Success!</h1>
+    <p>Your request was an absolute banger.</p>
+  </body>
+</html>`
+)
+
 func main() {
-	var handler server.Handler = func(w io.Writer, req *request.Request) *server.HandlerError {
+	var handler server.Handler = func(res *response.Response, req *request.Request) *server.HandlerError {
+		res.SetHeader("Content-Type", "text/html")
+
 		switch req.RequestLine.RequestTarget {
 		case "/yourproblem":
 			return &server.HandlerError{
 				StatusCode: response.StatBadRequest,
-				Message:    "Your problem is not my problem\n",
+				Message:    HTML400,
 			}
+
 		case "/myproblem":
 			return &server.HandlerError{
 				StatusCode: response.StatusInternalServerError,
-				Message:    "Woopsie, my bad\n",
+				Message:    HTML500,
 			}
+
 		default:
-			w.Write([]byte("All good, frfr\n"))
+			res.SetHeader("X-Sample-Header-Value", "Sample Value")
+			res.WriteStatusLine(response.StatusOK)
+			res.WriteMessageBody(HTML200)
 			return nil
 		}
 	}
 
-	server, err := server.Serve(port, handler)
+	srv, err := server.Serve(port, handler)
 	if err != nil {
 		log.Fatalf("Error starting server: %v", err)
 	}
-	defer server.Close()
+	defer srv.Close()
 	log.Println("Server started on port", port)
 
+	// 3. Keep the process alive safely
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
