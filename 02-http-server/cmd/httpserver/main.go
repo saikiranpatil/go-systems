@@ -77,23 +77,29 @@ func main() {
 				}
 			}
 
+			defer httpRes.Body.Close()
+
 			for {
 				bodyBuf := make([]byte, 8)
 				bodyBufLen, err := httpRes.Body.Read(bodyBuf)
 
+				if bodyBufLen > 0 {
+					writeErr := res.WriteChunkedBody(bodyBuf, bodyBufLen)
+					if writeErr != nil {
+						return &server.HandlerError{StatusCode: response.StatusInternalServerError, Message: HTML500}
+					}
+					time.Sleep(500 * time.Millisecond)
+				}
+
 				if err != nil {
 					if err == io.EOF {
-						break // Clean exit
+						break
 					}
 					return &server.HandlerError{
 						StatusCode: response.StatusInternalServerError,
 						Message:    HTML500,
 					}
 				}
-
-				res.WriteChunkedBody(bodyBuf, bodyBufLen)
-				// simulate chunking
-				time.Sleep(500 * time.Millisecond)
 			}
 
 			_, err := res.WriteChunkedBodyDone()
@@ -120,19 +126,20 @@ func main() {
 				bodyBuf := make([]byte, 8)
 				bodyBufLen, err := dataReader.Read(bodyBuf)
 
-				if err != nil {
-					if err == io.EOF {
-						break // Clean exit
+				if bodyBufLen > 0 {
+					writeErr := res.WriteChunkedBody(bodyBuf, bodyBufLen)
+					if writeErr != nil {
+						return &server.HandlerError{StatusCode: response.StatusInternalServerError, Message: HTML500}
 					}
-					return &server.HandlerError{
-						StatusCode: response.StatusInternalServerError,
-						Message:    HTML500,
-					}
+					time.Sleep(500 * time.Millisecond)
 				}
 
-				res.WriteChunkedBody(bodyBuf, bodyBufLen)
-				// simulate chunking
-				time.Sleep(500 * time.Millisecond)
+				if err != nil {
+					if err == io.EOF {
+						break // Clean exit when completely done
+					}
+					return &server.HandlerError{StatusCode: response.StatusInternalServerError, Message: HTML500}
+				}
 			}
 
 			_, err := res.WriteChunkedBodyDone()
