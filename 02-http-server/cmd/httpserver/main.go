@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"log"
+	"mytcpserver/internal/headers"
 	"mytcpserver/internal/request"
 	"mytcpserver/internal/response"
 	"mytcpserver/internal/server"
@@ -51,7 +54,7 @@ const (
 
 func main() {
 	var handler server.Handler = func(res *response.Response, req *request.Request) *server.HandlerError {
-		res.SetHeader("Content-Type", "text/html")
+		res.Headers.Replace("Content-Type", "text/html")
 
 		switch {
 		case req.RequestLine.RequestTarget == "/yourproblem":
@@ -76,15 +79,19 @@ func main() {
 					Message:    HTML500,
 				}
 			}
-
 			defer httpRes.Body.Close()
 
+			res.Headers.Replace("Trailer", "X-Content-SHA256")
+			res.Headers.Set("Trailer", "X-Content-Length")
+
+			fullBody := []byte{}
 			for {
 				bodyBuf := make([]byte, 8)
 				bodyBufLen, err := httpRes.Body.Read(bodyBuf)
 
 				if bodyBufLen > 0 {
-					writeErr := res.WriteChunkedBody(bodyBuf, bodyBufLen)
+					fullBody = append(fullBody, bodyBuf...)
+					_, writeErr := res.WriteChunkedBody(bodyBuf, bodyBufLen)
 					if writeErr != nil {
 						return &server.HandlerError{StatusCode: response.StatusInternalServerError, Message: HTML500}
 					}
@@ -109,6 +116,29 @@ func main() {
 					Message:    HTML500,
 				}
 			}
+
+			sum256 := sha256.Sum256(fullBody)
+			contentLen := len(fullBody)
+
+			trailer := headers.NewHeaders()
+			trailer.Set("X-Content-SHA256", fmt.Sprintf("%x", sum256))
+			trailer.Set("X-Content-Length", fmt.Sprintf("%x", contentLen))
+
+			err = res.WriteTrailers(trailer)
+			if err != nil {
+				return &server.HandlerError{
+					StatusCode: response.StatusInternalServerError,
+					Message:    HTML500,
+				}
+			}
+
+			_, err = res.WriteCrlf()
+			if err != nil {
+				return &server.HandlerError{
+					StatusCode: response.StatusInternalServerError,
+					Message:    HTML500,
+				}
+			}
 			return nil
 
 		case req.RequestLine.RequestTarget == "/fakegpt":
@@ -127,7 +157,7 @@ func main() {
 				bodyBufLen, err := dataReader.Read(bodyBuf)
 
 				if bodyBufLen > 0 {
-					writeErr := res.WriteChunkedBody(bodyBuf, bodyBufLen)
+					_, writeErr := res.WriteChunkedBody(bodyBuf, bodyBufLen)
 					if writeErr != nil {
 						return &server.HandlerError{StatusCode: response.StatusInternalServerError, Message: HTML500}
 					}
@@ -149,6 +179,15 @@ func main() {
 					Message:    HTML500,
 				}
 			}
+
+			_, err = res.WriteCrlf()
+			if err != nil {
+				return &server.HandlerError{
+					StatusCode: response.StatusInternalServerError,
+					Message:    HTML500,
+				}
+			}
+
 			return nil
 
 		case req.RequestLine.RequestTarget == "/video":

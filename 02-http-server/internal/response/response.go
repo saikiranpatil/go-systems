@@ -17,6 +17,7 @@ var (
 	ErrBodyAlreadySent       = errors.New("body has already been flushed and connection finalized")
 	ErrInvalidCallSequence   = errors.New("method execution violates structural lifecycle rules")
 	ErrCannotSetHeaders      = errors.New("cannot set headers after they are sent to the client")
+	ErrInvalidTrailerCall    = errors.New("cannot set trailer before status line or headers or body")
 )
 
 type StatusCode int
@@ -158,43 +159,72 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	return h
 }
 
-func (r *Response) WriteChunkedBody(buf []byte, bufLen int) error {
+func (r *Response) WriteChunkedBody(buf []byte, bufLen int) (int, error) {
 	if r.state == stateDone {
-		return ErrBodyAlreadySent
+		return 0, ErrBodyAlreadySent
 	}
-
 	if r.state == stateStatusLine || r.state == stateHeaders {
 		r.Headers.Delete("Content-Length")
 		r.Headers.Replace("Transfer-Encoding", "chunked")
 		if err := r.WriteHeaders(); err != nil {
-			return err
+			return 0, err
 		}
 	}
 
-	if _, err := r.writer.Write(fmt.Appendf(nil, "%x\r\n", bufLen)); err != nil {
-		return err
+	totalWritten := 0
+
+	n, err := fmt.Fprintf(r.writer, "%x\r\n", bufLen)
+	if err != nil {
+		return 0, err
 	}
+	totalWritten += n
 
 	if bufLen > 0 {
-		if _, err := r.writer.Write(buf[:bufLen]); err != nil {
-			return err
+		n, err := r.writer.Write(buf[:bufLen])
+		if err != nil {
+			return totalWritten, err
 		}
+		totalWritten += n
 	}
 
 	// 3. Close the chunk block
-	if _, err := r.writer.Write([]byte("\r\n")); err != nil {
-		return err
+	n, err = r.WriteCrlf()
+	if err != nil {
+		return totalWritten, err
 	}
+	totalWritten += n
 
-	return nil
+	return totalWritten, nil
 }
 
+// writes 0/r/n to the writer
 func (r *Response) WriteChunkedBodyDone() (int, error) {
-	err := r.WriteChunkedBody([]byte{}, 0)
+	n, err := r.WriteChunkedBody([]byte{}, 0)
 	if err != nil {
 		return 0, err
 	}
 
 	r.state = stateDone
-	return 5, nil
+	return n, nil
+}
+
+func (r *Response) WriteCrlf() (int, error) {
+	return r.writer.Write([]byte("\r\n"))
+}
+
+func (r *Response) WriteTrailers(trailers headers.Headers) error {
+	if r.state != stateDone {
+		return ErrInvalidTrailerCall
+	}
+
+	for key, value := range trailers {
+		trailer := fmt.Sprintf("%s: %s\r\n", key, value)
+		_, err := r.writer.Write([]byte(trailer))
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err := r.writer.Write([]byte("\r\n"))
+	return err
 }
