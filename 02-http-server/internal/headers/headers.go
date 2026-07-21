@@ -74,6 +74,10 @@ func (h Headers) Replace(key string, value string) {
 	h[key] = value
 }
 
+func (h Headers) Delete(key string) {
+	delete(h, key)
+}
+
 // append to headers map seperated by comma (,)
 // else add the value
 func (h Headers) Set(key string, value string) {

@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"log"
 	"mytcpserver/internal/request"
 	"mytcpserver/internal/response"
 	"mytcpserver/internal/server"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 )
 
 const port = 4000
@@ -48,27 +53,105 @@ func main() {
 	var handler server.Handler = func(res *response.Response, req *request.Request) *server.HandlerError {
 		res.SetHeader("Content-Type", "text/html")
 
-		switch req.RequestLine.RequestTarget {
-		case "/yourproblem":
+		switch {
+		case req.RequestLine.RequestTarget == "/yourproblem":
 			return &server.HandlerError{
 				StatusCode: response.StatBadRequest,
 				Message:    HTML400,
 			}
 
-		case "/myproblem":
+		case req.RequestLine.RequestTarget == "/myproblem":
 			return &server.HandlerError{
 				StatusCode: response.StatusInternalServerError,
 				Message:    HTML500,
 			}
 
-		case "/video":
+		case strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin/stream/"):
+			target := req.RequestLine.RequestTarget
+			httpRes, httpErr := http.Get("https://httpbin.dev/" + target[len("/httpbin/"):])
+
+			if httpErr != nil {
+				return &server.HandlerError{
+					StatusCode: response.StatusInternalServerError,
+					Message:    HTML500,
+				}
+			}
+
+			for {
+				bodyBuf := make([]byte, 8)
+				bodyBufLen, err := httpRes.Body.Read(bodyBuf)
+
+				if err != nil {
+					if err == io.EOF {
+						break // Clean exit
+					}
+					return &server.HandlerError{
+						StatusCode: response.StatusInternalServerError,
+						Message:    HTML500,
+					}
+				}
+
+				res.WriteChunkedBody(bodyBuf, bodyBufLen)
+				// simulate chunking
+				time.Sleep(500 * time.Millisecond)
+			}
+
+			_, err := res.WriteChunkedBodyDone()
+			if err != nil {
+				return &server.HandlerError{
+					StatusCode: response.StatusInternalServerError,
+					Message:    HTML500,
+				}
+			}
+			return nil
+
+		case req.RequestLine.RequestTarget == "/fakegpt":
+			data, readErr := os.ReadFile("./assets/dummy_text.txt")
+			if readErr != nil {
+				return &server.HandlerError{
+					StatusCode: response.StatusInternalServerError,
+					Message:    HTML500,
+				}
+			}
+
+			dataReader := bytes.NewReader(data)
+
+			for {
+				bodyBuf := make([]byte, 8)
+				bodyBufLen, err := dataReader.Read(bodyBuf)
+
+				if err != nil {
+					if err == io.EOF {
+						break // Clean exit
+					}
+					return &server.HandlerError{
+						StatusCode: response.StatusInternalServerError,
+						Message:    HTML500,
+					}
+				}
+
+				res.WriteChunkedBody(bodyBuf, bodyBufLen)
+				// simulate chunking
+				time.Sleep(500 * time.Millisecond)
+			}
+
+			_, err := res.WriteChunkedBodyDone()
+			if err != nil {
+				return &server.HandlerError{
+					StatusCode: response.StatusInternalServerError,
+					Message:    HTML500,
+				}
+			}
+			return nil
+
+		case req.RequestLine.RequestTarget == "/video":
 			res.Headers.Replace("Content-Type", "video/mp4")
 
 			b, _ := os.ReadFile("./assets/videoplayback.mp4")
 			res.WriteMessageBody(b)
 			return nil
 
-		case "/image":
+		case req.RequestLine.RequestTarget == "/image":
 			res.Headers.Replace("Content-Type", "image/png")
 
 			b, _ := os.ReadFile("./assets/avatar.png")

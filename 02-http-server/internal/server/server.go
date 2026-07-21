@@ -92,7 +92,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		res.WriteMessageBody([]byte(err.Error()))
 		return
 	}
-	req.PrintRequestLine()
+	// req.PrintRequestLine()
 
 	handleError := s.handler(res, req)
 	if handleError != nil {

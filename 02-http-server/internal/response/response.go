@@ -9,6 +9,8 @@ import (
 	"strconv"
 )
 
+var crlf = "\r\n"
+
 var (
 	ErrStatusLineAlreadySent = errors.New("status line must be written first")
 	ErrHeadersAlreadySent    = errors.New("headers have already been sent down the socket")
@@ -154,4 +156,45 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	h.Set("Content-Type", "text/plain")
 
 	return h
+}
+
+func (r *Response) WriteChunkedBody(buf []byte, bufLen int) error {
+	if r.state == stateDone {
+		return ErrBodyAlreadySent
+	}
+
+	if r.state == stateStatusLine || r.state == stateHeaders {
+		r.Headers.Delete("Content-Length")
+		r.Headers.Replace("Transfer-Encoding", "chunked")
+		if err := r.WriteHeaders(); err != nil {
+			return err
+		}
+	}
+
+	if _, err := r.writer.Write(fmt.Appendf(nil, "%x\r\n", bufLen)); err != nil {
+		return err
+	}
+
+	if bufLen > 0 {
+		if _, err := r.writer.Write(buf[:bufLen]); err != nil {
+			return err
+		}
+	}
+
+	// 3. Close the chunk block
+	if _, err := r.writer.Write([]byte("\r\n")); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *Response) WriteChunkedBodyDone() (int, error) {
+	err := r.WriteChunkedBody([]byte{}, 0)
+	if err != nil {
+		return 0, err
+	}
+
+	r.state = stateDone
+	return 5, nil
 }
