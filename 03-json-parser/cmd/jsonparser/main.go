@@ -1,13 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"os"
+
+	"github.com/saikiranpatil/json-parser/internal/lexer"
 )
 
 func main() {
-	// 1. reading from string literal
 	jsonStr := `{
   "users": [
     {
@@ -39,26 +38,9 @@ func main() {
   ],
   "total_count": 2
 }`
-	fmt.Println(jsonStr)
 
-	// 2. reading from stdin
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		line := scanner.Text()
-		fmt.Println("Echo:", line)
+	l := lexer.NewLexer(jsonStr)
+	for t := l.NextToken(); t.Type != lexer.EOF; t = l.NextToken() {
+		fmt.Print(t.Literal)
 	}
-
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "reading standard input:", err)
-	}
-
-	// 3. reading from file
-	filepath := "./assets/data.json"
-	file, err := os.ReadFile(filepath)
-	if err != nil {
-		fmt.Printf("error while reading file(%s): %v", filepath, err)
-	}
-
-	fmt.Println("JSON file read:")
-	fmt.Print(string(file))
 }
